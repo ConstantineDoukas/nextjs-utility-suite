@@ -152,11 +152,26 @@ export default function VideoConverter() {
         outputFileName,
       ]);
       
+
+      // Fetch the file data
       const outputData = await ffmpeg.readFile(outputFileName);
 
-      const blob = new Blob([outputData], { type: 'audio/mp3' });
+      let blob: Blob;
+
+      // Check if outputData is a Uint8Array
+      if (outputData instanceof Uint8Array) {
+        // It is. The problem is it might be backed by a SharedArrayBuffer.
+        // .slice() creates a shallow *copy* of the Uint8Array,
+        // which will be backed by a new, standard ArrayBuffer.
+        // This new copied array IS a valid BlobPart.
+        blob = new Blob([outputData.slice()], { type: 'audio/mp3' });
+      } else {
+        // It's a string, which is a valid BlobPart.
+        blob = new Blob([outputData], { type: 'audio/mp3' });
+      }
+
+      // Create the URL and update state
       setMp3Url(URL.createObjectURL(blob));
-      
       setIsConverting(false);
       setMessage('Conversion complete! You can now download the MP3.');
       
