@@ -1,18 +1,19 @@
 # netlify.toml
 
-# 1. Add the build command and publish directory
+# 1. Build command and publish directory
 [build]
   command = "npm run build"
   publish = ".next"
 
-# 2. Add the Next.js plugin declaration
+# 2. Next.js plugin declaration
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# 3. Add the function timeout configuration
-[[functions]]
-  name = "app/api/audit/route" # This should match your API file path
-  timeout = 60 # Increase timeout to 60 seconds
+# 3. Function configuration (FIXED SYNTAX)
+# This sets the timeout for ALL serverless functions in the project.
+# Since only the audit function is long-running, this is safe.
+[functions]
+  timeout = 60 # Increase default timeout to 60 seconds
 
 # 4. Keep your existing headers
 [[headers]]
