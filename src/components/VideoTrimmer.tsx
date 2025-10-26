@@ -1,7 +1,12 @@
+// src/components/VideoTrimmer.tsx
+
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-// import type { FFmpeg } from '@ffmpeg/ffmpeg'; // This line is removed to resolve a build-time resolution error.
+// --- THIS IS THE FIX ---
+// We import the FFmpeg type to avoid using 'any'
+import type { FFmpeg } from '@ffmpeg/ffmpeg';
+// --- END OF FIX ---
 
 // --- HELPER FUNCTIONS ---
 
@@ -44,7 +49,10 @@ export default function VideoTrimmer() {
   const [wasmURL, setWasmURL] = useState<string | null>(null);
 
   // Refs
-  const ffmpegRef = useRef<any | null>(null);
+  // --- THIS IS THE FIX ---
+  // We use the 'FFmpeg' type we imported
+  const ffmpegRef = useRef<FFmpeg | null>(null);
+  // --- END OF FIX ---
   const logMessagesRef = useRef<string[]>([]);
 
   // --- NEW STATE FOR TRIMMER ---
@@ -55,7 +63,7 @@ export default function VideoTrimmer() {
   const [endTime, setEndTime] = useState<number>(0);
 
   
-  // --- FFMPEG LOADING (Same as before) ---
+  // --- FFMPEG LOADING ---
   useEffect(() => {
     const loadFFmpegUtils = async () => {
       try {
@@ -81,7 +89,6 @@ export default function VideoTrimmer() {
 
     setMessage('Loading FFmpeg core...');
 
-    // --- FIX: Moved import and setup INSIDE the try/catch block ---
     try {
       const { FFmpeg } = await import('@ffmpeg/ffmpeg');
 
@@ -102,11 +109,9 @@ export default function VideoTrimmer() {
       });
 
       ffmpeg.on('progress', ({ progress }) => {
-        // We clamp progress at 1 because -c copy can sometimes report > 1
         const clampedProgress = Math.min(1, progress);
         setProgress(Math.round(clampedProgress * 100));
       });
-      // --- END OF MOVED CODE ---
 
       await ffmpeg.load({ coreURL, wasmURL });
       setFfmpegReady(true);
@@ -130,11 +135,9 @@ export default function VideoTrimmer() {
       setOutputUrl(null); // Reset any previous conversion
       setProgress(0);
       
-      // Revoke old URL to prevent memory leaks
       if (videoSrc) {
         URL.revokeObjectURL(videoSrc);
       }
-      // Create a new URL for the video tag
       const url = URL.createObjectURL(file);
       setVideoSrc(url);
 
@@ -182,14 +185,9 @@ export default function VideoTrimmer() {
     const outputFileName = 'output.mp4';
 
     try {
-      // Read the file and write it to FFmpeg's virtual file system
       const fileData = await videoFile.arrayBuffer();
       const data = new Uint8Array(fileData);
       await ffmpeg.writeFile(inputFileName, data);
-
-      // --- THE NEW TRIM COMMAND ---
-      // We use -c copy for a "stream copy" which is EXTREMELY fast.
-      // It doesn't re-encode the video, just cuts it.
       await ffmpeg.exec([
         '-i',
         inputFileName,
@@ -201,21 +199,14 @@ export default function VideoTrimmer() {
         'copy',            // 'copy' codec
         outputFileName,
       ]);
-      // --- END NEW COMMAND ---
       
       const outputData = await ffmpeg.readFile(outputFileName);
-
-      // Create a new Blob from the output data
-      // We still use .slice() to fix the SharedArrayBuffer issue
       const blob = new Blob([outputData.slice()], { type: 'video/mp4' });
-
-      // Create a URL for the new Blob
       const url = URL.createObjectURL(blob);
       setOutputUrl(url);
       setIsConverting(false);
       setMessage('Trim complete! You can now download the video.');
       
-      // Clean up virtual files
       await ffmpeg.deleteFile(inputFileName);
       await ffmpeg.deleteFile(outputFileName);
 
@@ -274,7 +265,6 @@ export default function VideoTrimmer() {
             />
           </div>
 
-          {/* --- NEW VIDEO PREVIEW & TRIMMER UI --- */}
           {videoSrc && (
             <div className="my-4 space-y-4">
               <video
@@ -283,7 +273,6 @@ export default function VideoTrimmer() {
                 className="w-full rounded-lg shadow-inner bg-gray-800"
                 onLoadedMetadata={handleVideoLoaded}
               />
-              {/* Render the visual timeline component */}
               <TrimmerTimeline
                 duration={videoDuration}
                 startTime={startTime}
@@ -293,8 +282,6 @@ export default function VideoTrimmer() {
               />
             </div>
           )}
-          {/* --- END NEW UI --- */}
-
 
           <button
             onClick={trimVideo}
@@ -312,7 +299,7 @@ export default function VideoTrimmer() {
       {isConverting && (
         <div className="w-full bg-gray-700 rounded-full h-2.5">
           <div
-            className="bg-blue-600 h-2.5 rounded-full" // Removed transition for smoother progress
+            className="bg-blue-600 h-2.5 rounded-full"
             style={{ width: `${progress}%` }}
           ></div>
         </div>
@@ -338,8 +325,6 @@ export default function VideoTrimmer() {
 
 
 // --- SUB-COMPONENT: The Visual Timeline ---
-// We keep this in the same file to make it easy to manage.
-
 interface TrimmerTimelineProps {
   duration: number;
   startTime: number;
@@ -358,58 +343,42 @@ function TrimmerTimeline({
   const timelineRef = useRef<HTMLDivElement>(null);
   const [draggingHandle, setDraggingHandle] = useState<'start' | 'end' | null>(null);
 
-  // Convert times to percentages for CSS
   const startPercent = (startTime / duration) * 100;
   const endPercent = (endTime / duration) * 100;
 
-  // Calculate new time from a mouse event
   const calculateTimeFromEvent = useCallback((e: MouseEvent | TouchEvent) => {
     if (!timelineRef.current) return 0;
-
     const timeline = timelineRef.current;
     const rect = timeline.getBoundingClientRect();
-    
     let clientX: number;
     if ('touches' in e) {
       clientX = e.touches[0].clientX;
     } else {
       clientX = e.clientX;
     }
-
     const newX = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     return newX * duration;
   }, [duration]);
 
-
-  // Effect to handle dragging
   useEffect(() => {
     const handleMove = (e: MouseEvent | TouchEvent) => {
       if (!draggingHandle) return;
-
       const newTime = calculateTimeFromEvent(e);
-
       if (draggingHandle === 'start') {
-        // Prevent start handle from crossing end handle
-        onStartTimeChange(Math.min(newTime, endTime - 0.1)); // 0.1s min duration
+        onStartTimeChange(Math.min(newTime, endTime - 0.1));
       } else if (draggingHandle === 'end') {
-        // Prevent end handle from crossing start handle
         onEndTimeChange(Math.max(newTime, startTime + 0.1));
       }
     };
-
     const handleStop = () => {
       setDraggingHandle(null);
     };
-
-    // Add global listeners
     if (draggingHandle) {
       document.addEventListener('mousemove', handleMove);
       document.addEventListener('mouseup', handleStop);
       document.addEventListener('touchmove', handleMove);
       document.addEventListener('touchend', handleStop);
     }
-
-    // Cleanup
     return () => {
       document.removeEventListener('mousemove', handleMove);
       document.removeEventListener('mouseup', handleStop);
@@ -418,15 +387,12 @@ function TrimmerTimeline({
     };
   }, [draggingHandle, endTime, startTime, onStartTimeChange, onEndTimeChange, calculateTimeFromEvent]);
 
-
   return (
     <div className="space-y-3 pt-2">
-      {/* 1. The Timeline */}
       <div
         ref={timelineRef}
         className="relative w-full h-3 bg-gray-700 rounded-full cursor-pointer"
         onMouseDown={(e) => {
-          // Allow clicking on the track to move the nearest handle
           const newTime = calculateTimeFromEvent(e.nativeEvent);
           if (Math.abs(newTime - startTime) < Math.abs(newTime - endTime)) {
             onStartTimeChange(Math.min(newTime, endTime - 0.1));
@@ -435,7 +401,6 @@ function TrimmerTimeline({
           }
         }}
       >
-        {/* Selected Range */}
         <div
           className="absolute h-full bg-blue-600 rounded-full"
           style={{
@@ -443,45 +408,27 @@ function TrimmerTimeline({
             width: `${endPercent - startPercent}%`,
           }}
         ></div>
-
-        {/* Start Handle */}
         <div
           className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-5 h-5 bg-white rounded-full shadow-lg border-2 border-blue-500 cursor-ew-resize"
           style={{ left: `${startPercent}%` }}
-          onMouseDown={(e) => {
-            e.stopPropagation(); // Prevent track click
-            setDraggingHandle('start');
-          }}
-          onTouchStart={(e) => {
-            e.stopPropagation();
-            setDraggingHandle('start');
-          }}
+          onMouseDown={(e) => { e.stopPropagation(); setDraggingHandle('start'); }}
+          onTouchStart={(e) => { e.stopPropagation(); setDraggingHandle('start'); }}
         >
           <div className="w-full h-full flex items-center justify-center">
             <div className="w-1 h-3 bg-gray-500 rounded-full"></div>
           </div>
         </div>
-
-        {/* End Handle */}
         <div
           className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-5 h-5 bg-white rounded-full shadow-lg border-2 border-blue-500 cursor-ew-resize"
           style={{ left: `${endPercent}%` }}
-          onMouseDown={(e) => {
-            e.stopPropagation();
-            setDraggingHandle('end');
-          }}
-          onTouchStart={(e) => {
-            e.stopPropagation();
-            setDraggingHandle('start');
-          }}
+          onMouseDown={(e) => { e.stopPropagation(); setDraggingHandle('end'); }}
+          onTouchStart={(e) => { e.stopPropagation(); setDraggingHandle('end'); }}
         >
           <div className="w-full h-full flex items-center justify-center">
             <div className="w-1 h-3 bg-gray-500 rounded-full"></div>
           </div>
         </div>
       </div>
-
-      {/* 2. The Time Displays */}
       <div className="flex justify-between text-sm font-mono">
         <span className="text-white bg-gray-800 px-2 py-1 rounded">
           Start: {formatTime(startTime)}
@@ -493,4 +440,3 @@ function TrimmerTimeline({
     </div>
   );
 }
-

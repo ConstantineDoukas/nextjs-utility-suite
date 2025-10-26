@@ -1,12 +1,35 @@
+// src/app/api/audit/route.ts
+
 import { NextResponse } from 'next/server';
 
 const PAGESPEED_API_KEY = process.env.PAGESPEED_API_KEY;
 const PAGESPEED_API_URL = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
 
+// --- THIS IS THE FIX ---
+// We create a type for the API response to avoid using 'any'
+interface LighthouseCategory {
+  score: number;
+}
+interface LighthouseResult {
+  categories: {
+    performance: LighthouseCategory;
+    accessibility: LighthouseCategory;
+    seo: LighthouseCategory;
+  };
+}
+interface PageSpeedResponse {
+  lighthouseResult: LighthouseResult;
+}
+// --- END OF FIX ---
+
+
 /**
  * Helper to get score from the Lighthouse report
  */
-const getScore = (data: any, category: string): number => {
+// --- THIS IS THE FIX ---
+// We use our new type here
+const getScore = (data: PageSpeedResponse, category: 'performance' | 'accessibility' | 'seo'): number => {
+// --- END OF FIX ---
   // Multiply by 100 and round to a whole number
   return Math.round(data.lighthouseResult.categories[category].score * 100);
 };
@@ -23,10 +46,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
-    // We'll test the mobile strategy, as it's the most common
-    // We request the three most important categories
     const categories = ['PERFORMANCE', 'ACCESSIBILITY', 'SEO'];
-    
     const queryParams = new URLSearchParams({
       url: url,
       key: PAGESPEED_API_KEY,
@@ -36,7 +56,6 @@ export async function POST(request: Request) {
 
     const fullApiUrl = `${PAGESPEED_API_URL}?${queryParams.toString()}`;
 
-    // Make the call to Google's API
     const response = await fetch(fullApiUrl, {
       headers: {
         'Accept': 'application/json'
@@ -49,7 +68,10 @@ export async function POST(request: Request) {
       throw new Error(errorData.error.message || 'PageSpeed API request failed');
     }
 
-    const data = await response.json();
+    // --- THIS IS THE FIX ---
+    // We cast the response JSON to our new type
+    const data: PageSpeedResponse = await response.json();
+    // --- END OF FIX ---
 
     // Extract the scores we care about
     const results = {

@@ -1,6 +1,7 @@
+// src/app/page.tsx
+
 import Link from 'next/link';
 
-// This array makes it easy to add more tools later
 const tools = [
   {
     name: "MP4 to MP3 Converter",
@@ -14,14 +15,12 @@ const tools = [
     href: "/trimmer",
     status: "live",
   },
-  // --- THIS IS THE NEW OBJECT YOU NEED TO ADD ---
   {
-    name: "Site Inspector",
-    description: "Inspect a URL to get its title, description, and headings.",
+    name: "AI Site Inspector",
+    description: "Get an AI summary and Lighthouse audit for any site.",
     href: "/inspector",
-    status: "live", // Set to "live" so it's clickable
-  },
-  // --- END NEW OBJECT ---
+    status: "live",
+  }
 ];
 
 export default function SuiteHome() {
@@ -29,18 +28,16 @@ export default function SuiteHome() {
     <main className="flex min-h-screen flex-col items-center p-12 md:p-24 bg-gray-950">
       <div className="relative z-10 text-center mb-16">
         <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
-          Dean's Utility Suite
+          Dean&apos;s Utility Suite
         </h1>
         <p className="text-lg text-gray-400">
           A collection of useful, client-side web tools.
         </p>
       </div>
 
-      {/* Grid for the tools */}
       <div className="w-full max-w-2xl grid grid-cols-1 md:grid-cols-2 gap-6">
         {tools.map((tool) => (
           <div key={tool.name}>
-            {/* Render a clickable link for "live" tools */}
             {tool.status === 'live' ? (
               <Link href={tool.href}>
                 <span className="flex flex-col justify-between h-full p-6 bg-gray-900 rounded-xl shadow-lg text-white hover:bg-gray-800 transition-all duration-200 cursor-pointer border border-gray-800 hover:border-blue-600">
@@ -51,7 +48,6 @@ export default function SuiteHome() {
                 </span>
               </Link>
             ) : (
-              // Render a disabled "coming soon" card
               <div className="flex flex-col justify-between h-full p-6 bg-gray-900 rounded-xl shadow-lg text-gray-700 border border-gray-800 opacity-60">
                  <div>
                     <h2 className="text-xl font-semibold mb-2 text-gray-500">{tool.name}</h2>
@@ -66,4 +62,3 @@ export default function SuiteHome() {
     </main>
   );
 }
-

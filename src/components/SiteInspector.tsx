@@ -4,31 +4,25 @@
 
 import { useState } from 'react';
 
-// --- UPDATED TYPES ---
+// --- (Types and Helper Component are the same) ---
 interface InspectionResults {
   title: string;
   aiSummary: string;
   imageBase64: string | null;
   imageMimeType: string | null;
-  // We're removing the 'links' object from here
 }
-
 interface AuditResults {
   performance: number;
   accessibility: number;
   seo: number;
 }
-
-// --- NEW HELPER COMPONENT ---
-// A small component to render the colored score circles
 function ScoreCircle({ score }: { score: number }) {
-  let colorClass = 'bg-red-500'; // Default to red
+  let colorClass = 'bg-red-500';
   if (score >= 90) {
-    colorClass = 'bg-green-500'; // Green for 90-100
+    colorClass = 'bg-green-500';
   } else if (score >= 50) {
-    colorClass = 'bg-yellow-500'; // Yellow for 50-89
+    colorClass = 'bg-yellow-500';
   }
-
   return (
     <div className="flex flex-col items-center justify-center">
       <div className={`w-20 h-20 rounded-full flex items-center justify-center ${colorClass}`}>
@@ -38,28 +32,24 @@ function ScoreCircle({ score }: { score: number }) {
   );
 }
 
-
 export default function SiteInspector() {
+  // --- (State is the same) ---
   const [url, setUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<InspectionResults | null>(null);
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
-
-  // --- NEW STATE FOR AUDIT ---
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditResults, setAuditResults] = useState<AuditResults | null>(null);
 
-
-  // handleSubmit now ONLY does the initial inspection
+  // --- (handleSubmit is the same) ---
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); 
     setIsLoading(true);
     setError(null);
     setResults(null);
     setIsSummaryExpanded(false);
-    // Reset audit state
     setAuditResults(null);
     setAuditError(null);
     setIsAuditing(false);
@@ -76,21 +66,17 @@ export default function SiteInspector() {
     }
 
     try {
-      // Call the 'inspect' API
       const response = await fetch('/api/inspect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: fullUrl }),
       });
-
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to fetch the URL');
       }
-
       const data: InspectionResults = await response.json();
       setResults(data);
-
     } catch (err) {
        if (err instanceof Error) {
         setError(err.message);
@@ -103,30 +89,24 @@ export default function SiteInspector() {
     }
   };
 
-  // --- NEW FUNCTION: handleRunAudit ---
+  // --- (handleRunAudit is the same) ---
   const handleRunAudit = async () => {
     if (!url) return;
-
     setIsAuditing(true);
     setAuditError(null);
     setAuditResults(null);
-
     try {
-      // Call our NEW 'audit' API
       const response = await fetch('/api/audit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url }), // 'url' state already has full https://
+        body: JSON.stringify({ url: url }),
       });
-
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Audit failed');
       }
-
       const data: AuditResults = await response.json();
       setAuditResults(data);
-
     } catch (err) {
       if (err instanceof Error) {
         setAuditError(err.message);
@@ -138,11 +118,11 @@ export default function SiteInspector() {
     }
   };
 
-
+  // --- RENDER ---
   return (
     <div className="w-full max-w-lg p-8 space-y-6 bg-gray-900 rounded-xl shadow-lg text-white">
       
-      {/* 1. The Form (No changes) */}
+      {/* 1. The Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
          <div>
           <label htmlFor="url-input" className="block text-sm font-medium text-gray-300 mb-1">
@@ -152,9 +132,7 @@ export default function SiteInspector() {
             id="url-input"
             type="text"
             value={url}
-            // --- THIS IS THE FIX ---
             onChange={(e) => setUrl(e.target.value)}
-            // --- END OF FIX ---
             placeholder="e.g., vercel.com"
             className="w-full px-4 py-2 font-mono text-sm bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500"
           />
@@ -181,17 +159,21 @@ export default function SiteInspector() {
       {results && (
         <div className="space-y-6 pt-4 border-t border-gray-700">
           
-          {/* --- AI Analysis Card (No changes) --- */}
+          {/* AI Analysis Card */}
           <div>
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">AI Analysis</h3>
             <div className="flex gap-4">
               <div className="w-24 flex-shrink-0">
                 {results.imageBase64 && results.imageMimeType ? (
+                  // --- THIS IS THE FIX ---
+                  // We're disabling the lint rule for this one line
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img 
                     src={`data:${results.imageMimeType};base64,${results.imageBase64}`} 
                     alt="Site Preview" 
                     className="w-full h-24 object-cover rounded-lg border border-gray-700"
                   />
+                  // --- END OF FIX ---
                 ) : (
                   <div className="w-full h-24 flex items-center justify-center bg-gray-800 rounded-lg border-gray-700">
                     <p className="text-xs text-gray-500">No Image</p>
@@ -202,7 +184,7 @@ export default function SiteInspector() {
                 <h4 className="text-lg text-white font-semibold truncate" title={results.title || ''}>
                   {results.title || '(No title found)'}
                 </h4>
-                <p className={`text-sm text-gray-30m00 ${isSummaryExpanded ? '' : 'line-clamp-3'}`}>
+                <p className={`text-sm text-gray-300 ${isSummaryExpanded ? '' : 'line-clamp-3'}`}>
                   {results.aiSummary}
                 </p>
                 {results.aiSummary.length > 150 && (
@@ -217,11 +199,8 @@ export default function SiteInspector() {
             </div>
           </div>
 
-          {/* --- REMOVED "Site Health" --- */}
-
-          {/* --- NEW: "Run Audit" Button --- */}
+          {/* "Run Audit" Button */}
           <div className="pt-6 border-t border-gray-700">
-            {/* Show this button ONLY if we don't have results yet */}
             {!auditResults && !isAuditing && (
               <button
                 onClick={handleRunAudit}
@@ -232,7 +211,6 @@ export default function SiteInspector() {
               </button>
             )}
 
-            {/* Show loading state */}
             {isAuditing && (
               <div className="text-center p-4">
                 <p className="text-lg text-gray-300 animate-pulse">Running Lighthouse audit...</p>
@@ -240,7 +218,6 @@ export default function SiteInspector() {
               </div>
             )}
 
-            {/* Show audit error */}
             {auditError && (
               <div className="p-4 text-center text-red-300 bg-red-900/50 rounded-lg">
                 <p className="font-semibold">Audit Failed</p>
@@ -248,7 +225,7 @@ export default function SiteInspector() {
               </div>
             )}
 
-            {/* --- NEW: "Site Audit" Results --- */}
+            {/* "Site Audit" Results */}
             {auditResults && (
               <div>
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Lighthouse Audit Scores (Mobile)</h3>
