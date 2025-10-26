@@ -1,4 +1,20 @@
-# This is the entire contents of your new netlify.toml file
+# netlify.toml
+
+# 1. Add the build command and publish directory
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+# 2. Add the Next.js plugin declaration
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# 3. Add the function timeout configuration
+[[functions]]
+  name = "app/api/audit/route" # This should match your API file path
+  timeout = 60 # Increase timeout to 60 seconds
+
+# 4. Keep your existing headers
 [[headers]]
   for = "/*"
   [headers.values]
