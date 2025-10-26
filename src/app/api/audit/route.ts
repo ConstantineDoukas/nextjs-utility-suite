@@ -6,79 +6,66 @@ const PAGESPEED_API_KEY = process.env.PAGESPEED_API_KEY;
 const PAGESPEED_API_URL = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
 
 // --- Types ---
-interface LighthouseCategory {
-  score: number;
-}
-interface LighthouseResult {
-  categories: {
-    performance: LighthouseCategory;
-    accessibility: LighthouseCategory;
-    seo: LighthouseCategory;
-  };
-}
-interface PageSpeedResponse {
-  lighthouseResult: LighthouseResult;
-}
+interface LighthouseCategory { score: number; }
+interface LighthouseResult { categories: { performance: LighthouseCategory; accessibility: LighthouseCategory; seo: LighthouseCategory; }; }
+interface PageSpeedResponse { lighthouseResult: LighthouseResult; }
 
-/**
- * Helper to get score
- */
+/** Helper to get score */
 const getScore = (data: PageSpeedResponse, category: 'performance' | 'accessibility' | 'seo'): number => {
-  return Math.round(data.lighthouseResult.categories[category].score * 100);
+  // Add safety check in case category is missing
+  return Math.round((data.lighthouseResult?.categories?.[category]?.score || 0) * 100);
 };
 
 export async function POST(request: Request) {
-  if (!PAGESPEED_API_KEY) {
-    console.error("Server is missing PageSpeed API key.");
-    return NextResponse.json({ error: 'Server is missing PageSpeed API key.' }, { status: 500 });
-  }
+  if (!PAGESPEED_API_KEY) { /* ... */ }
+
+  let url: string | undefined; // Define url here to access in finally block
 
   try {
-    const { url } = await request.json();
+    const body = await request.json();
+    url = body.url; // Assign url here
     if (!url) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
     const categories = ['PERFORMANCE', 'ACCESSIBILITY', 'SEO'];
-    const queryParams = new URLSearchParams({
-      url: url,
-      key: PAGESPEED_API_KEY,
-      strategy: 'mobile',
-    });
+    const queryParams = new URLSearchParams({ url: url, key: PAGESPEED_API_KEY, strategy: 'mobile' });
     categories.forEach(category => queryParams.append('category', category));
-
     const fullApiUrl = `${PAGESPEED_API_URL}?${queryParams.toString()}`;
 
-    const response = await fetch(fullApiUrl, {
-      headers: {
-        'Accept': 'application/json'
-      }
-    });
+    console.log(`DEBUG: Calling PageSpeed API for ${url}...`); // Log start
 
-    // --- THIS IS THE FIX ---
-    // Check if the response seems like valid JSON before parsing
-    const contentType = response.headers.get("content-type");
-    if (!response.ok || !contentType || !contentType.includes("application/json")) {
-      // It's likely an error page or empty response from Google
-      const errorText = await response.text(); // Get the raw text
-      console.error("PageSpeed API returned non-JSON response:", response.status, errorText);
-      // Try to parse Google's specific error format if possible
+    const response = await fetch(fullApiUrl, { headers: { 'Accept': 'application/json' } });
+
+    // --- ENHANCED ERROR HANDLING ---
+    if (!response.ok) {
+      const errorText = await response.text(); // Get raw response body
+      console.error(`PageSpeed API Error: Status ${response.status}`, errorText); // Log raw body
+      let errorMessage = `PageSpeed API failed with status ${response.status}.`;
       try {
+         // Attempt to parse Google's specific error format
          const errorJson = JSON.parse(errorText);
-         throw new Error(errorJson.error.message || `PageSpeed API failed with status ${response.status}`);
+         errorMessage = errorJson.error.message || errorMessage; // Use Google's message if available
       } catch (parseError) {
-         // If parsing fails, use a generic error
-         throw new Error(`PageSpeed API failed with status ${response.status}. Response was not valid JSON.`);
+         // If parsing fails, stick with the generic status error
+         console.warn("Could not parse PageSpeed error response as JSON.");
       }
+      throw new Error(errorMessage); // Throw the detailed error
     }
-    // --- END OF FIX ---
 
-    // Now it should be safe to parse
+    // Check content type before parsing
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+       const responseText = await response.text();
+       console.error(`PageSpeed API returned non-JSON content-type: ${contentType}`, responseText);
+       throw new Error(`PageSpeed API returned unexpected content type: ${contentType}.`);
+    }
+    // --- END ENHANCED ERROR HANDLING ---
+
     const data: PageSpeedResponse = await response.json();
 
-    // Check if lighthouseResult exists (it might be missing if the audit failed internally)
     if (!data.lighthouseResult || !data.lighthouseResult.categories) {
-       console.error("PageSpeed API response missing lighthouseResult:", data);
+       console.error("PageSpeed API response missing lighthouseResult:", JSON.stringify(data, null, 2));
        throw new Error("PageSpeed audit completed but returned incomplete data.");
     }
 
@@ -88,16 +75,16 @@ export async function POST(request: Request) {
       seo: getScore(data, 'seo'),
     };
 
+    console.log(`DEBUG: PageSpeed API success for ${url}. Scores:`, results); // Log success
     return NextResponse.json(results);
 
   } catch (error) {
     let errorMessage = 'An unknown error occurred during the audit.';
     if (error instanceof Error) {
-      // Use the specific error message we generated above
       errorMessage = error.message;
     }
-    console.error("Error in PageSpeed audit function:", errorMessage);
-    // Send the clear error message back to the frontend
+    // Log the final error that will be sent to the frontend
+    console.error(`Error in audit function for URL: ${url || 'unknown'}. Final error:`, errorMessage);
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
