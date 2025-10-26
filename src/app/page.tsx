@@ -14,6 +14,14 @@ const tools = [
     href: "/trimmer",
     status: "live",
   },
+  // --- THIS IS THE NEW OBJECT YOU NEED TO ADD ---
+  {
+    name: "Site Inspector",
+    description: "Inspect a URL to get its title, description, and headings.",
+    href: "/inspector",
+    status: "live", // Set to "live" so it's clickable
+  },
+  // --- END NEW OBJECT ---
 ];
 
 export default function SuiteHome() {
@@ -21,7 +29,7 @@ export default function SuiteHome() {
     <main className="flex min-h-screen flex-col items-center p-12 md:p-24 bg-gray-950">
       <div className="relative z-10 text-center mb-16">
         <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
-          Dean&apos;s Utility Suite
+          Dean's Utility Suite
         </h1>
         <p className="text-lg text-gray-400">
           A collection of useful, client-side web tools.
@@ -58,3 +66,4 @@ export default function SuiteHome() {
     </main>
   );
 }
+
