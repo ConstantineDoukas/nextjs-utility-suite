@@ -5,8 +5,7 @@ import { NextResponse } from 'next/server';
 const PAGESPEED_API_KEY = process.env.PAGESPEED_API_KEY;
 const PAGESPEED_API_URL = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
 
-// --- THIS IS THE FIX ---
-// We create a type for the API response to avoid using 'any'
+// --- Types ---
 interface LighthouseCategory {
   score: number;
 }
@@ -20,17 +19,11 @@ interface LighthouseResult {
 interface PageSpeedResponse {
   lighthouseResult: LighthouseResult;
 }
-// --- END OF FIX ---
-
 
 /**
- * Helper to get score from the Lighthouse report
+ * Helper to get score
  */
-// --- THIS IS THE FIX ---
-// We use our new type here
 const getScore = (data: PageSpeedResponse, category: 'performance' | 'accessibility' | 'seo'): number => {
-// --- END OF FIX ---
-  // Multiply by 100 and round to a whole number
   return Math.round(data.lighthouseResult.categories[category].score * 100);
 };
 
@@ -62,18 +55,33 @@ export async function POST(request: Request) {
       }
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("PageSpeed API Error:", errorData);
-      throw new Error(errorData.error.message || 'PageSpeed API request failed');
-    }
-
     // --- THIS IS THE FIX ---
-    // We cast the response JSON to our new type
-    const data: PageSpeedResponse = await response.json();
+    // Check if the response seems like valid JSON before parsing
+    const contentType = response.headers.get("content-type");
+    if (!response.ok || !contentType || !contentType.includes("application/json")) {
+      // It's likely an error page or empty response from Google
+      const errorText = await response.text(); // Get the raw text
+      console.error("PageSpeed API returned non-JSON response:", response.status, errorText);
+      // Try to parse Google's specific error format if possible
+      try {
+         const errorJson = JSON.parse(errorText);
+         throw new Error(errorJson.error.message || `PageSpeed API failed with status ${response.status}`);
+      } catch (parseError) {
+         // If parsing fails, use a generic error
+         throw new Error(`PageSpeed API failed with status ${response.status}. Response was not valid JSON.`);
+      }
+    }
     // --- END OF FIX ---
 
-    // Extract the scores we care about
+    // Now it should be safe to parse
+    const data: PageSpeedResponse = await response.json();
+
+    // Check if lighthouseResult exists (it might be missing if the audit failed internally)
+    if (!data.lighthouseResult || !data.lighthouseResult.categories) {
+       console.error("PageSpeed API response missing lighthouseResult:", data);
+       throw new Error("PageSpeed audit completed but returned incomplete data.");
+    }
+
     const results = {
       performance: getScore(data, 'performance'),
       accessibility: getScore(data, 'accessibility'),
@@ -83,11 +91,13 @@ export async function POST(request: Request) {
     return NextResponse.json(results);
 
   } catch (error) {
-    let errorMessage = 'An unknown error occurred';
+    let errorMessage = 'An unknown error occurred during the audit.';
     if (error instanceof Error) {
+      // Use the specific error message we generated above
       errorMessage = error.message;
     }
     console.error("Error in PageSpeed audit function:", errorMessage);
+    // Send the clear error message back to the frontend
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
