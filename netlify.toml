@@ -9,12 +9,10 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# 3. Target the specific audit function (FIXED SYNTAX)
-# Use double brackets and specify the function directory/path
-[[functions]]
-  # This targets functions generated from files within this directory
-  included_files = ["src/app/api/audit/**"] 
-  timeout = 60 # Increase timeout just for this function to 60 seconds
+# 3. Global function configuration (FIXED SYNTAX - Simpler)
+# Use single brackets to set defaults for ALL functions
+[functions]
+  timeout = 60 # Increase default timeout for ALL functions to 60 seconds
 
 # 4. Keep your existing headers
 [[headers]]
