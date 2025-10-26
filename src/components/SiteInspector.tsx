@@ -4,25 +4,30 @@
 
 import { useState } from 'react';
 
-// --- (Types and Helper Component are the same) ---
+// --- UPDATED TYPES ---
 interface InspectionResults {
   title: string;
   aiSummary: string;
   imageBase64: string | null;
   imageMimeType: string | null;
+  // Note: 'links' object is no longer part of this interface
 }
+
 interface AuditResults {
   performance: number;
   accessibility: number;
   seo: number;
 }
+
+// --- HELPER COMPONENT for Score Circles ---
 function ScoreCircle({ score }: { score: number }) {
-  let colorClass = 'bg-red-500';
+  let colorClass = 'bg-red-500'; // Default to red
   if (score >= 90) {
-    colorClass = 'bg-green-500';
+    colorClass = 'bg-green-500'; // Green for 90-100
   } else if (score >= 50) {
-    colorClass = 'bg-yellow-500';
+    colorClass = 'bg-yellow-500'; // Yellow for 50-89
   }
+
   return (
     <div className="flex flex-col items-center justify-center">
       <div className={`w-20 h-20 rounded-full flex items-center justify-center ${colorClass}`}>
@@ -32,24 +37,30 @@ function ScoreCircle({ score }: { score: number }) {
   );
 }
 
+
+// --- MAIN COMPONENT ---
 export default function SiteInspector() {
-  // --- (State is the same) ---
+  // State for the initial inspection
   const [url, setUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<InspectionResults | null>(null);
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
+
+  // State for the Lighthouse audit
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditResults, setAuditResults] = useState<AuditResults | null>(null);
 
-  // --- (handleSubmit is the same) ---
+
+  // Handles the initial site inspection (AI summary, image)
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault(); 
+    e.preventDefault();
     setIsLoading(true);
     setError(null);
     setResults(null);
     setIsSummaryExpanded(false);
+    // Reset audit state as well on new inspection
     setAuditResults(null);
     setAuditError(null);
     setIsAuditing(false);
@@ -62,26 +73,30 @@ export default function SiteInspector() {
     let fullUrl = url;
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       fullUrl = `https://${url}`;
-      setUrl(fullUrl); 
+      setUrl(fullUrl); // Update the input field to show the full URL
     }
 
     try {
+      // Call the 'inspect' API
       const response = await fetch('/api/inspect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: fullUrl }),
       });
+
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch the URL');
+        throw new Error(errorData.error || `Inspection API failed with status ${response.status}`);
       }
+
       const data: InspectionResults = await response.json();
       setResults(data);
+
     } catch (err) {
        if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError('An unknown error occurred.');
+        setError('An unknown error occurred during inspection.');
       }
     }
     finally {
@@ -89,39 +104,72 @@ export default function SiteInspector() {
     }
   };
 
-  // --- (handleRunAudit is the same) ---
+  // Handles running the Lighthouse audit via the '/api/audit' route
   const handleRunAudit = async () => {
-    if (!url) return;
+    if (!url) return; // Should not happen if button is shown, but good practice
+
     setIsAuditing(true);
     setAuditError(null);
     setAuditResults(null);
+
+    let response: Response | null = null; // Store response for better error handling
+
     try {
-      const response = await fetch('/api/audit', {
+      response = await fetch('/api/audit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url }),
+        body: JSON.stringify({ url: url }), // 'url' state already has full https://
       });
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Audit failed');
+        // Try to get error message from backend JSON response
+        try {
+          const errorData = await response.json();
+          // Use the specific error message from the backend API
+          throw new Error(errorData.error || `Audit API failed with status ${response.status}`);
+        } catch (jsonError) {
+          // If response wasn't JSON (e.g., 504 timeout empty response), throw generic status error
+          throw new Error(`Audit API failed with status ${response.status}`);
+        }
       }
-      const data: AuditResults = await response.json();
-      setAuditResults(data);
+
+      // --- NEW CHECK ---
+      // Attempt to parse JSON, but catch errors specifically
+      let data: AuditResults | null = null;
+      try {
+        data = await response.json();
+      } catch (jsonParseError) {
+        console.error("Failed to parse audit response JSON:", jsonParseError);
+        // Throw a user-friendly error if JSON parsing fails (like unexpected end of input)
+        throw new Error("Audit timed out or returned invalid data. The site might be too complex for the PageSpeed API.");
+      }
+      // --- END NEW CHECK ---
+
+      // Check if data is null or missing expected fields (belt and braces)
+      if (!data || typeof data.performance === 'undefined' || typeof data.accessibility === 'undefined' || typeof data.seo === 'undefined') {
+         console.error("Audit response missing expected data:", data);
+         throw new Error("Audit completed but returned incomplete data.");
+      }
+
+      setAuditResults(data); // Set the successful audit results
+
     } catch (err) {
+      // Use the specific error message thrown from the try block
       if (err instanceof Error) {
         setAuditError(err.message);
       } else {
         setAuditError('An unknown audit error occurred.');
       }
     } finally {
-      setIsAuditing(false);
+      setIsAuditing(false); // Ensure loading state is turned off
     }
   };
+
 
   // --- RENDER ---
   return (
     <div className="w-full max-w-lg p-8 space-y-6 bg-gray-900 rounded-xl shadow-lg text-white">
-      
+
       {/* 1. The Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
          <div>
@@ -140,7 +188,7 @@ export default function SiteInspector() {
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full px-6 py-3 font-semibold text-white bg-blue-600 rounded-lg 
+          className="w-full px-6 py-3 font-semibold text-white bg-blue-600 rounded-lg
                      hover:bg-blue-700 transition duration-300
                      disabled:bg-gray-500 disabled:cursor-not-allowed"
         >
@@ -148,34 +196,32 @@ export default function SiteInspector() {
         </button>
       </form>
 
-      {/* 2. Status Messages */}
+      {/* 2. Initial Inspection Status Messages */}
       {error && (
         <div className="p-4 text-center text-red-300 bg-red-900/50 rounded-lg">
           <p>{error}</p>
         </div>
       )}
 
-      {/* 3. The Results Display */}
+      {/* 3. The Results Display Area */}
+      {/* This only shows after the initial inspection succeeds */}
       {results && (
         <div className="space-y-6 pt-4 border-t border-gray-700">
-          
+
           {/* AI Analysis Card */}
           <div>
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">AI Analysis</h3>
             <div className="flex gap-4">
               <div className="w-24 flex-shrink-0">
                 {results.imageBase64 && results.imageMimeType ? (
-                  // --- THIS IS THE FIX ---
-                  // We're disabling the lint rule for this one line
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img 
-                    src={`data:${results.imageMimeType};base64,${results.imageBase64}`} 
-                    alt="Site Preview" 
+                  <img
+                    src={`data:${results.imageMimeType};base64,${results.imageBase64}`}
+                    alt="Site Preview"
                     className="w-full h-24 object-cover rounded-lg border border-gray-700"
                   />
-                  // --- END OF FIX ---
                 ) : (
-                  <div className="w-full h-24 flex items-center justify-center bg-gray-800 rounded-lg border-gray-700">
+                  <div className="w-full h-24 flex items-center justify-center bg-gray-800 rounded-lg border border-gray-700">
                     <p className="text-xs text-gray-500">No Image</p>
                   </div>
                 )}
@@ -187,7 +233,8 @@ export default function SiteInspector() {
                 <p className={`text-sm text-gray-300 ${isSummaryExpanded ? '' : 'line-clamp-3'}`}>
                   {results.aiSummary}
                 </p>
-                {results.aiSummary.length > 150 && (
+                {/* Show more/less button */}
+                {results.aiSummary && results.aiSummary.length > 150 && ( // Check if aiSummary exists before checking length
                   <button
                     onClick={() => setIsSummaryExpanded(!isSummaryExpanded)}
                     className="text-xs font-semibold text-blue-400 hover:text-blue-300 mt-1"
@@ -199,25 +246,28 @@ export default function SiteInspector() {
             </div>
           </div>
 
-          {/* "Run Audit" Button */}
+          {/* Audit Section */}
           <div className="pt-6 border-t border-gray-700">
+            {/* Show "Run Audit" button only if audit hasn't run and isn't running */}
             {!auditResults && !isAuditing && (
               <button
                 onClick={handleRunAudit}
-                className="w-full px-6 py-3 font-semibold text-white bg-green-600 rounded-lg 
+                className="w-full px-6 py-3 font-semibold text-white bg-green-600 rounded-lg
                            hover:bg-green-700 transition duration-300"
               >
                 Run Full Site Audit (Lighthouse)
               </button>
             )}
 
+            {/* Show loading state while auditing */}
             {isAuditing && (
               <div className="text-center p-4">
                 <p className="text-lg text-gray-300 animate-pulse">Running Lighthouse audit...</p>
-                <p className="text-sm text-gray-500">(This can take up to 30 seconds)</p>
+                <p className="text-sm text-gray-500">(This can take up to 60 seconds)</p>
               </div>
             )}
 
+            {/* Show audit error message */}
             {auditError && (
               <div className="p-4 text-center text-red-300 bg-red-900/50 rounded-lg">
                 <p className="font-semibold">Audit Failed</p>
@@ -225,7 +275,7 @@ export default function SiteInspector() {
               </div>
             )}
 
-            {/* "Site Audit" Results */}
+            {/* Show audit results if successful */}
             {auditResults && (
               <div>
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Lighthouse Audit Scores (Mobile)</h3>
@@ -246,9 +296,9 @@ export default function SiteInspector() {
               </div>
             )}
           </div>
-          
+
         </div>
-      )}
+      )} {/* End of results && block */}
     </div>
   );
 }
